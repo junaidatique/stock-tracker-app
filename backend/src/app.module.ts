@@ -4,12 +4,14 @@ import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
 import { FirebaseModule } from './firebase/firebase.module';
 import { IndicesModule } from './indices/indices.module';
+import { ThresholdsModule } from './thresholds/thresholds.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     FirebaseModule,
     IndicesModule,
+    ThresholdsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

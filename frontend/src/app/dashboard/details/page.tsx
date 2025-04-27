@@ -1,7 +1,10 @@
+// frontend/src/app/dashboard/details/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { Dialog, DialogTitle } from '@headlessui/react';
 import { useAuth } from '../../context/AuthContext';
 import { fetchWithAuth } from '../../../lib/fetchWithAuth';
 import {
@@ -13,7 +16,6 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
-import Link from 'next/link';
 
 interface CandleData {
   t: number[];
@@ -47,18 +49,24 @@ export default function DetailsPage() {
   const date = params.get('date') ?? '';
   const interval = (params.get('interval') as string) || '1min';
 
-  const [overview, setOverview] = useState<TickerOverview|null>(null);
-  const [chart, setChart] = useState<CandleData|null>(null);
+  const [overview, setOverview] = useState<TickerOverview | null>(null);
+  const [chart, setChart] = useState<CandleData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string|null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // auth guard
+  // Modal state
+  const [target, setTarget] = useState('');
+  const [condition, setCondition] = useState<'above' | 'below'>('above');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Auth guard
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace('/login');
-    }
+    if (!authLoading && !user) router.replace('/login');
   }, [user, authLoading, router]);
 
+  // Fetch details
   useEffect(() => {
     if (!user) return;
     if (!symbol || !date) {
@@ -66,7 +74,6 @@ export default function DetailsPage() {
       setLoading(false);
       return;
     }
-
     (async () => {
       setLoading(true);
       setError(null);
@@ -74,41 +81,55 @@ export default function DetailsPage() {
         const res = await fetchWithAuth(
           `/indices/${encodeURIComponent(symbol)}/details?date=${date}&interval=${interval}`
         );
-        if (res.status === 404) {
-          throw new Error('Data not found (404)');
-        }
-        if (!res.ok) {
-          throw new Error(`API Error: ${res.status} ${res.statusText}`);
-        }
-        const data: {
-          overview: TickerOverview|null;
-          chart: CandleData;
-        } = await res.json();
+        if (res.status === 404) throw new Error('Data not found (404)');
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        const data: { overview: TickerOverview | null; chart: CandleData } = await res.json();
         setOverview(data.overview);
         setChart(data.chart);
       } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('An unknown error occurred');
-        }
+        setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setLoading(false);
       }
     })();
   }, [user, symbol, date, interval]);
 
-  // Prepare chart data for Recharts
-  const rechartsData =
-    chart && chart.s === 'ok'
-      ? chart.t.map((ts, i) => ({
-          time: new Date(ts).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          close: chart.c[i],
-        }))
-      : [];
+  // Prepare chart data
+  const rechartsData = chart && chart.s === 'ok'
+    ? chart.t.map((ts, i) => ({
+        time: new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        close: chart.c[i],
+      }))
+    : [];
+
+  // Modal handlers
+  const openModal = () => {
+    setTarget('');
+    setCondition('above');
+    setCreateError(null);
+    setIsOpen(true);
+  };
+  const closeModal = () => {
+    setIsOpen(false);
+  };
+
+  const createThreshold = async () => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const res = await fetchWithAuth('/thresholds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: symbol, target: parseFloat(target), condition }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      closeModal();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to create threshold');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
@@ -138,59 +159,25 @@ export default function DetailsPage() {
               {overview ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <p>
-                      <span className="font-medium">Name:</span>{' '}
-                      {overview.name}
-                    </p>
-                    <p>
-                      <span className="font-medium">Market:</span>{' '}
-                      {overview.market}
-                    </p>
-                    <p>
-                      <span className="font-medium">Locale:</span>{' '}
-                      {overview.locale}
-                    </p>
-                    <p>
-                      <span className="font-medium">Exchange:</span>{' '}
-                      {overview.primary_exchange}
-                    </p>
-                    {overview.list_date && (
-                      <p>
-                        <span className="font-medium">List Date:</span>{' '}
-                        {overview.list_date}
-                      </p>
-                    )}
-                    {overview.market_cap != null && (
-                      <p>
-                        <span className="font-medium">Market Cap:</span>{' '}
-                        {overview.market_cap.toLocaleString()}
-                      </p>
-                    )}
+                    <p><span className="font-medium">Name:</span> {overview.name}</p>
+                    <p><span className="font-medium">Market:</span> {overview.market}</p>
+                    <p><span className="font-medium">Locale:</span> {overview.locale}</p>
+                    <p><span className="font-medium">Exchange:</span> {overview.primary_exchange}</p>
+                    {overview.list_date && <p><span className="font-medium">List Date:</span> {overview.list_date}</p>}
+                    {overview.market_cap != null && <p><span className="font-medium">Market Cap:</span> {overview.market_cap.toLocaleString()}</p>}
                   </div>
                   <div>
-                    {overview.description && (
-                      <p className="text-sm text-gray-700 dark:text-gray-300">
-                        {overview.description}
-                      </p>
-                    )}
+                    {overview.description && <p className="text-sm text-gray-700 dark:text-gray-300">{overview.description}</p>}
                     {overview.homepage_url && (
-                      <p className="mt-2">
-                        <a
-                          href={overview.homepage_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-600 dark:text-blue-400 hover:underline"
-                        >
-                          Visit Website
-                        </a>
-                      </p>
+                      <a href={overview.homepage_url} target="_blank" rel="noreferrer"
+                         className="text-blue-600 dark:text-blue-400 hover:underline">
+                        Visit Website
+                      </a>
                     )}
                   </div>
                 </div>
               ) : (
-                <p className="text-gray-700 dark:text-gray-300">
-                  Overview not available.
-                </p>
+                <p className="text-gray-700 dark:text-gray-300">Overview not available.</p>
               )}
             </section>
 
@@ -204,22 +191,73 @@ export default function DetailsPage() {
                   <LineChart data={rechartsData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={(v) => v.toFixed(2)} />
+                    <YAxis tickFormatter={v => v.toFixed(2)} />
                     <Tooltip />
-                    <Line
-                      type="monotone"
-                      dataKey="close"
-                      stroke="#3B82F6"
-                      dot={false}
-                    />
+                    <Line type="monotone" dataKey="close" stroke="#3B82F6" dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-gray-700 dark:text-gray-300">
-                  No chart data available.
-                </p>
+                <p className="text-gray-700 dark:text-gray-300">No chart data available.</p>
               )}
             </section>
+
+            {/* Create Threshold Button */}
+            <button
+              onClick={openModal}
+              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+            >
+              Create Threshold
+            </button>
+
+            {/* Modal */}
+            <Dialog open={isOpen} onClose={closeModal}>
+              <div className="fixed inset-0 z-10 overflow-y-auto bg-black/50">
+                <div className="min-h-screen px-4 text-center">
+                  
+                  <span className="inline-block h-screen align-middle" aria-hidden="true">&#8203;</span>
+                  <div className="inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle bg-white dark:bg-gray-800 shadow-xl rounded-lg z-50">
+                    <DialogTitle as="h3" className="text-lg font-medium leading-6 text-gray-900 dark:text-gray-100">
+                      Create Threshold for {symbol}
+                    </DialogTitle>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Target Price</label>
+                        <input
+                          type="number"
+                          value={target}
+                          onChange={e => setTarget(e.target.value)}
+                          className="w-full px-3 py-2 border rounded bg-gray-100 dark:bg-gray-700 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Condition</label>
+                        <select
+                          value={condition}
+                          onChange={e => setCondition(e.target.value as 'above' | 'below')}
+                          className="w-full px-3 py-2 border rounded bg-gray-100 dark:bg-gray-700"
+                        >
+                          <option value="above">Above</option>
+                          <option value="below">Below</option>
+                        </select>
+                      </div>
+                      {createError && <p className="text-sm text-red-500">{createError}</p>}
+                    </div>
+                    <div className="mt-6 flex justify-end space-x-2">
+                      <button className="px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded" onClick={closeModal}>
+                        Cancel
+                      </button>
+                      <button
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50"
+                        onClick={createThreshold}
+                        disabled={creating || !target}
+                      >
+                        {creating ? 'Creating…' : 'Create'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Dialog>
           </>
         )}
       </div>
