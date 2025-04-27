@@ -29,7 +29,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <LogoutButton />
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', padding: '1rem 0' }}>
+            <LogoutButton />
+          </div>
           {children}
         </AuthProvider>
       </body>

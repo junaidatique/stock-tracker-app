@@ -59,42 +59,50 @@ export class IndicesService {
     search: string = '',
     limit: number = 10,
   ): Promise<TickerInfo[]> {
-    const resp = await axios.get(
-      'https://api.polygon.io/v3/reference/tickers',
-      {
-        params: {
-          apiKey: this.apiKeyPolygon,
-          search,
-          limit,
+    try {
+      const resp = await axios.get(
+        'https://api.polygon.io/v3/reference/tickers',
+        {
+          params: {
+            apiKey: this.apiKeyPolygon,
+            search,
+            limit,
+          },
         },
-      },
-    );
-
-    interface PolygonResponse {
-      status: string;
-      results: TickerInfo[];
-    }
-
-    const polygonResp = resp.data as PolygonResponse;
-    if (polygonResp.status !== 'OK' || !Array.isArray(polygonResp.results)) {
-      throw new BadRequestException(
-        `Polygon returned status=${polygonResp.status}`,
       );
-    }
 
-    return polygonResp.results.map((r: TickerInfo) => ({
-      ticker: r.ticker,
-      name: r.name,
-      market: r.market,
-      locale: r.locale,
-      primary_exchange: r.primary_exchange,
-      active: r.active,
-    }));
+      interface PolygonResponse {
+        status: string;
+        results: TickerInfo[];
+      }
+
+      const polygonResp = resp.data as PolygonResponse;
+      if (polygonResp.status !== 'OK' || !Array.isArray(polygonResp.results)) {
+        throw new BadRequestException(
+          `Polygon returned status=${polygonResp.status}`,
+        );
+      }
+
+      return polygonResp.results.map((r: TickerInfo) => ({
+        ticker: r.ticker,
+        name: r.name,
+        market: r.market,
+        locale: r.locale,
+        primary_exchange: r.primary_exchange,
+        active: r.active,
+      }));
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        // too many requests
+        throw new BadRequestException('Polygon API rate limit exceeded');
+      }
+      throw err;
+    }
   }
 
   /**
    * Fetch intraday bars for a given index symbol on one day.
-   * Uses Twelve Data’s free time_series endpoint:
+   * Uses Twelve Data's free time_series endpoint:
    *   https://api.twelvedata.com/time_series
    *
    * @param symbol    e.g. 'SPX' or '^GSPC' (Twelve Data uses plain tickers)
