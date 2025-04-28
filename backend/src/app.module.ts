@@ -5,10 +5,12 @@ import { ConfigModule } from '@nestjs/config';
 import { FirebaseModule } from './firebase/firebase.module';
 import { IndicesModule } from './indices/indices.module';
 import { ThresholdsModule } from './thresholds/thresholds.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     FirebaseModule,
     IndicesModule,
     ThresholdsModule,

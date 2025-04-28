@@ -11,6 +11,10 @@ export interface Threshold {
   enabled: boolean;
   createdAt: admin.firestore.Timestamp;
 }
+export interface AllThresholds {
+  uid: string;
+  thresholds: Threshold[];
+}
 
 @Injectable()
 export class ThresholdsService {
@@ -57,5 +61,23 @@ export class ThresholdsService {
   /** Disable (mark as sent) so it no longer appears or fires again */
   async disable(uid: string, id: string): Promise<void> {
     await this.userCollection(uid).doc(id).update({ enabled: false });
+  }
+
+  async listAllUsers(): Promise<AllThresholds[]> {
+    const usersSnap = await this.db.collection('users').get();
+    const all: AllThresholds[] = [];
+    for (const doc of usersSnap.docs) {
+      const uid = doc.id;
+      const thrSnap = await doc.ref
+        .collection('thresholds')
+        .where('enabled', '==', true)
+        .get();
+      const thresholds = thrSnap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Threshold, 'id'>),
+      }));
+      if (thresholds.length) all.push({ uid, thresholds });
+    }
+    return all;
   }
 }
