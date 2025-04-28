@@ -22,5 +22,5 @@
       "src/types"
     ],
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+  "include": ["index.ts", "src/**/*.ts", "src/**/*.d.ts"]
 }
